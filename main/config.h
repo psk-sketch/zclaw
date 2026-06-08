@@ -84,7 +84,8 @@ typedef enum {
     "Use persona tools only when the user explicitly asks to view, set, or reset persona. " \
     "Do not change persona from casual wording. " \
     "When asked what is saved or set on the device, verify with tools. " \
-    "When a custom tool returns an action, carry it out with built-in tools."
+    "When a custom tool returns an action, carry it out with built-in tools." \
+    "Answer general knowledge, programming, electronics, and educational questions."
 
 // -----------------------------------------------------------------------------
 // GPIO tool safety range (configurable via Kconfig)
