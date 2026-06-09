@@ -175,7 +175,7 @@ typedef enum {
 // -----------------------------------------------------------------------------
 #define NTP_SERVER              "pool.ntp.org"
 #define NTP_SYNC_TIMEOUT_MS     10000
-#define DEFAULT_TIMEZONE_POSIX  "UTC0"
+#define DEFAULT_TIMEZONE_POSIX  "IST-5:30"
 #define TIMEZONE_MAX_LEN        64
 
 // -----------------------------------------------------------------------------
