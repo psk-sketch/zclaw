@@ -1,6 +1,8 @@
 // Include the module's public interface declarations
 #include "gpio_mapping.h"
 #ifndef TEST_BUILD
+// Include configuration constants
+#include "config.h"
 // Include key-value memory store public APIs (memory_set, memory_get, memory_delete)
 #include "memory.h"
 // Include GPIO policy checks (gpio_policy_pin_is_allowed)
@@ -15,6 +17,10 @@
 #include "freertos/semphr.h"
 // Include mbedtls SHA-256 implementation
 #include "mbedtls/sha256.h"
+#else
+// Fallbacks for host-side unit testing where config.h is not present
+#define GPIO_MAPPING_KEY_PREFIX   "u_gpio_"
+#define GPIO_MAPPING_MAX_NAME_LEN 16
 #endif
 // Include standard string functions (strlen, strchr, strcmp, strncpy, etc.)
 #include <string.h>
@@ -270,7 +276,7 @@ static esp_err_t validate_and_normalize_device(const char *device, char *normali
 static esp_err_t get_device_key(const char *normalized_device, char *key_out, size_t max_len)
 {
     // Format the NVS key name with the user prefix and the device name
-    int written = snprintf(key_out, max_len, "u_gpio_%s", normalized_device);
+    int written = snprintf(key_out, max_len, GPIO_MAPPING_KEY_PREFIX "%s", normalized_device);
     // If snprintf truncated or failed, it means the key name is too long for NVS limit (15 chars)
     if (written < 0 || (size_t)written >= max_len) {
         ESP_LOGW(TAG, "NVS key name prefix/device combination is too long");
@@ -378,7 +384,7 @@ static esp_err_t list_remove_device(const char *device)
 // --------------------------------------------------------------------------
 esp_err_t gpio_mapping_save(const char *device, int pin, const char *password)
 {
-    char normalized[16] = {0};
+    char normalized[GPIO_MAPPING_MAX_NAME_LEN] = {0};
     // Validate device name length and normalize it to lowercase
     esp_err_t err = validate_and_normalize_device(device, normalized, sizeof(normalized));
     if (err != ESP_OK) {
@@ -389,7 +395,7 @@ esp_err_t gpio_mapping_save(const char *device, int pin, const char *password)
         ESP_LOGE(TAG, "GPIO pin %d is not allowed by policy", pin);
         return ESP_ERR_INVALID_ARG;
     }
-    char key[16] = {0};
+    char key[GPIO_MAPPING_MAX_NAME_LEN] = {0};
     // Generate the NVS key name; will fail if key name exceeds NVS key limit (15 chars)
     err = get_device_key(normalized, key, sizeof(key));
     if (err != ESP_OK) {
@@ -473,12 +479,12 @@ bool gpio_mapping_get_pin(const char *device, int *pin)
     if (!pin) {
         return false;
     }
-    char normalized[16] = {0};
+    char normalized[GPIO_MAPPING_MAX_NAME_LEN] = {0};
     // Validate and normalize name; returns false on failure
     if (validate_and_normalize_device(device, normalized, sizeof(normalized)) != ESP_OK) {
         return false;
     }
-    char key[16] = {0};
+    char key[GPIO_MAPPING_MAX_NAME_LEN] = {0};
     // Generate key name; returns false if key name exceeds NVS key limit (15 chars)
     if (get_device_key(normalized, key, sizeof(key)) != ESP_OK) {
         return false;
@@ -498,13 +504,13 @@ bool gpio_mapping_get_pin(const char *device, int *pin)
 // --------------------------------------------------------------------------
 esp_err_t gpio_mapping_delete(const char *device, const char *password)
 {
-    char normalized[16] = {0};
+    char normalized[GPIO_MAPPING_MAX_NAME_LEN] = {0};
     // Validate and normalize device name
     esp_err_t err = validate_and_normalize_device(device, normalized, sizeof(normalized));
     if (err != ESP_OK) {
         return err;
     }
-    char key[16] = {0};
+    char key[GPIO_MAPPING_MAX_NAME_LEN] = {0};
     // Generate key name
     err = get_device_key(normalized, key, sizeof(key));
     if (err != ESP_OK) {
@@ -542,12 +548,12 @@ esp_err_t gpio_mapping_delete(const char *device, const char *password)
 // --------------------------------------------------------------------------
 bool gpio_mapping_exists(const char *device)
 {
-    char normalized[16] = {0};
+    char normalized[GPIO_MAPPING_MAX_NAME_LEN] = {0};
     // Validate and normalize device name
     if (validate_and_normalize_device(device, normalized, sizeof(normalized)) != ESP_OK) {
         return false;
     }
-    char key[16] = {0};
+    char key[GPIO_MAPPING_MAX_NAME_LEN] = {0};
     // Generate key name
     if (get_device_key(normalized, key, sizeof(key)) != ESP_OK) {
         return false;
@@ -600,11 +606,11 @@ esp_err_t gpio_mapping_list(char *result, size_t result_len)
             *next = '\0';
         }
 
-        char device[16];
+        char device[GPIO_MAPPING_MAX_NAME_LEN];
         strncpy(device, ptr, sizeof(device) - 1);
         device[sizeof(device) - 1] = '\0';
 
-        char key[16] = {0};
+        char key[GPIO_MAPPING_MAX_NAME_LEN] = {0};
         // Retrieve and add each active device mapping to the JSON array
         if (get_device_key(device, key, sizeof(key)) == ESP_OK) {
             char pin_str[16] = {0};
