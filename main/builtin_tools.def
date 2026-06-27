@@ -16,14 +16,14 @@
 /* gpio_write — drives a single allowed GPIO pin HIGH (1) or LOW (0).
  * Required inputs: pin (integer), state (integer, 0 or 1) */
 TOOL_ENTRY("gpio_write",
-           "Set an allowed GPIO HIGH or LOW.",
+           "Set an allowed GPIO HIGH or LOW. The pin parameter may be either:\n\n* a GPIO number\n* a mapped device name",
            "{\"type\":\"object\",\"properties\":{\"pin\":{\"type\":\"integer\"},\"state\":{\"type\":\"integer\"}},\"required\":[\"pin\",\"state\"]}",
            tools_gpio_write_handler)
 
 /* gpio_read — samples the current logic level of a single allowed GPIO pin.
  * Required inputs: pin (integer) */
 TOOL_ENTRY("gpio_read",
-           "Read an allowed GPIO.",
+           "Read an allowed GPIO. The pin parameter may be either:\n\n* a GPIO number\n* a mapped device name",
            "{\"type\":\"object\",\"properties\":{\"pin\":{\"type\":\"integer\"}},\"required\":[\"pin\"]}",
            tools_gpio_read_handler)
 
