@@ -12,6 +12,7 @@ idf_component_register(
         "tools.c"
         "tools_common.c"
         "gpio_policy.c"
+        "gpio_mapping.c"
         "tools_gpio.c"
         "tools_i2c.c"
         "tools_dht.c"
