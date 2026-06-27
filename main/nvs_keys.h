@@ -1,20 +1,29 @@
-#ifndef MEMORY_KEYS_H       // Include guard: prevents this header from being processed twice
-#define MEMORY_KEYS_H
+#ifndef NVS_KEYS_H          // Include guard: if NVS_KEYS_H is not yet defined...
+#define NVS_KEYS_H          // ...define it now. Prevents this file from being included twice.
 
-#include <stdbool.h>        // Brings in the 'bool', 'true', and 'false' types (standard C99+)
+// System/configuration keys stored in NVS namespace "zclaw".
+// NVS = Non-Volatile Storage (ESP-IDF's flash storage system, like a key-value database).
+// Each macro is a string literal that acts as a named key in that database.
 
-// Prefix that all user-scoped memory keys must begin with.
-// This namespaces user data away from system data in NVS.
-#define USER_MEMORY_KEY_PREFIX "u_"
+#define NVS_KEY_BOOT_COUNT   "boot_count"   // Tracks how many times the device has booted
+#define NVS_KEY_WIFI_SSID    "wifi_ssid"    // The Wi-Fi network name to connect to
+#define NVS_KEY_WIFI_PASS    "wifi_pass"    // The Wi-Fi password
+#define NVS_KEY_LLM_BACKEND  "llm_backend"  // Which LLM provider to use (e.g. OpenAI, Ollama)
+#define NVS_KEY_API_KEY      "api_key"      // The API key for the LLM provider
+#define NVS_KEY_LLM_MODEL    "llm_model"    // Which model to use (e.g. "gpt-4o")
+#define NVS_KEY_LLM_API_URL  "llm_api_url"  // The API endpoint URL for the LLM
+#define NVS_KEY_TG_TOKEN     "tg_token"     // Telegram bot token for sending messages
+#define NVS_KEY_TG_CHAT_ID   "tg_chat_id"   // A single Telegram chat ID to message
+#define NVS_KEY_TG_CHAT_IDS  "tg_chat_ids"  // Multiple Telegram chat IDs (e.g. comma-separated)
+#define NVS_KEY_TIMEZONE     "timezone"     // The device's timezone string (e.g. "Asia/Kolkata")
+#define NVS_KEY_PERSONA      "persona"      // The LLM system prompt / personality to use
+#define NVS_KEY_GPIO_PWD_HASH "gpio_pwd_hash" // SHA-256 hash of password protecting GPIO mappings
 
-// Checks whether a given NVS key is a valid user-scoped key.
-// A key is user-scoped if it starts with the "u_" prefix.
-// Tools (LLM-callable functions) should only read/write user keys.
-bool memory_keys_is_user_key(const char *key);
+// Rate-limit bookkeeping keys.
+// These track how many LLM requests have been made to enforce daily limits.
 
-// Checks whether a given NVS key is sensitive (system-level secret).
-// Tools must NEVER read or modify keys that return true here.
-// This protects credentials like API keys, Wi-Fi passwords, and Telegram tokens.
-bool memory_keys_is_sensitive(const char *key);
+#define NVS_KEY_RL_DAILY     "rl_daily"     // The daily request limit count
+#define NVS_KEY_RL_DAY       "rl_day"       // The current day of month (to detect day rollover)
+#define NVS_KEY_RL_YEAR      "rl_year"      // The current year (used together with rl_day)
 
-#endif // MEMORY_KEYS_H     // End of include guard
+#endif // NVS_KEYS_H        // End of the include guard
