@@ -38,6 +38,11 @@ bool tools_i2c_write_read_handler(const cJSON *input, char *result, size_t resul
 // Reads temperature and humidity from a DHT sensor on a specified pin
 bool tools_dht_read_handler(const cJSON *input, char *result, size_t result_len);
 
+// --- GPIO Mapping Handlers ---
+bool tools_gpio_mapping_save_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_gpio_mapping_delete_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_gpio_mapping_list_handler(const cJSON *input, char *result, size_t result_len);
+
 // --- Key-Value Memory & Persona Handlers ---
 
 // Stores a named value in persistent memory
