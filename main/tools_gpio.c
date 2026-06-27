@@ -414,6 +414,129 @@ bool tools_delay_handler(const cJSON *input, char *result, size_t result_len)
 
 
 /* ============================================================
+ * HANDLER: tools_gpio_mapping_save_handler()
+ *
+ * Tool: gpio_mapping_save
+ * Purpose: Save a persistent, case-insensitive mapping of a device name to a GPIO pin.
+ *
+ * Expected JSON input:
+ *   { "device": "<name>", "pin": <number>, "password": "<optional_password>" }
+ *
+ * On success writes "Successfully saved mapping: <device> -> pin <number>" into result.
+ * ============================================================ */
+bool tools_gpio_mapping_save_handler(const cJSON *input, char *result, size_t result_len)
+{
+    cJSON *device_json = cJSON_GetObjectItem(input, "device");
+    cJSON *pin_json    = cJSON_GetObjectItem(input, "pin");
+    cJSON *pwd_json    = cJSON_GetObjectItem(input, "password");
+
+    // Validate that "device" exists and is a JSON string
+    if (!device_json || !cJSON_IsString(device_json)) {
+        snprintf(result, result_len, "Error: 'device' name is required (string)");
+        return false;
+    }
+
+    // Validate that "pin" exists and is a JSON number
+    if (!pin_json || !cJSON_IsNumber(pin_json)) {
+        snprintf(result, result_len, "Error: 'pin' is required (number)");
+        return false;
+    }
+
+    const char *device   = device_json->valuestring;
+    int pin              = pin_json->valueint;
+    const char *password = (pwd_json && cJSON_IsString(pwd_json)) ? pwd_json->valuestring : NULL;
+
+    // Safety checks: We must validate the pin via tools_validate_allowed_gpio_pin()
+    if (!tools_validate_allowed_gpio_pin(pin, NULL, result, result_len)) {
+        return false;
+    }
+
+    // Call public API to save the persistent mapping
+    esp_err_t err = gpio_mapping_save(device, pin, password);
+    if (err == ESP_OK) {
+        snprintf(result, result_len, "Successfully saved mapping: %s -> pin %d", device, pin);
+        return true;
+    } else {
+        if (err == ESP_ERR_INVALID_ARG) {
+            snprintf(result, result_len, "Error: invalid argument or incorrect password");
+        } else if (err == ESP_ERR_INVALID_SIZE) {
+            snprintf(result, result_len, "Error: device name too long (max 10 characters)");
+        } else {
+            snprintf(result, result_len, "Error: failed to save mapping (code %d)", err);
+        }
+        return false;
+    }
+}
+
+
+/* ============================================================
+ * HANDLER: tools_gpio_mapping_delete_handler()
+ *
+ * Tool: gpio_mapping_delete
+ * Purpose: Delete a persistent GPIO mapping for a device name (case-insensitive).
+ *
+ * Expected JSON input:
+ *   { "device": "<name>", "password": "<optional_password>" }
+ *
+ * On success writes "Successfully deleted mapping for device: <device>" into result.
+ * ============================================================ */
+bool tools_gpio_mapping_delete_handler(const cJSON *input, char *result, size_t result_len)
+{
+    cJSON *device_json = cJSON_GetObjectItem(input, "device");
+    cJSON *pwd_json    = cJSON_GetObjectItem(input, "password");
+
+    // Validate that "device" exists and is a JSON string
+    if (!device_json || !cJSON_IsString(device_json)) {
+        snprintf(result, result_len, "Error: 'device' name is required (string)");
+        return false;
+    }
+
+    const char *device   = device_json->valuestring;
+    const char *password = (pwd_json && cJSON_IsString(pwd_json)) ? pwd_json->valuestring : NULL;
+
+    // Call public API to delete the persistent mapping
+    esp_err_t err = gpio_mapping_delete(device, password);
+    if (err == ESP_OK) {
+        snprintf(result, result_len, "Successfully deleted mapping for device: %s", device);
+        return true;
+    } else {
+        if (err == ESP_ERR_INVALID_ARG) {
+            snprintf(result, result_len, "Error: incorrect password or invalid device");
+        } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+            snprintf(result, result_len, "Error: mapping not found for device '%s'", device);
+        } else {
+            snprintf(result, result_len, "Error: failed to delete mapping (code %d)", err);
+        }
+        return false;
+    }
+}
+
+
+/* ============================================================
+ * HANDLER: tools_gpio_mapping_list_handler()
+ *
+ * Tool: gpio_mapping_list
+ * Purpose: List all registered persistent GPIO mappings.
+ *
+ * No input parameters expected.
+ *
+ * On success writes JSON array of mappings into result.
+ * ============================================================ */
+bool tools_gpio_mapping_list_handler(const cJSON *input, char *result, size_t result_len)
+{
+    (void)input; // Unused parameter
+
+    esp_err_t err = gpio_mapping_list(result, result_len);
+    if (err == ESP_OK) {
+        return true;
+    } else {
+        snprintf(result, result_len, "Error: failed to list mappings (code %d)", err);
+        return false;
+    }
+}
+
+
+/* ============================================================
  * TEST-BUILD ONLY: thin wrappers for unit-testing the pin
  * policy logic without needing real ESP32 hardware.
  *
