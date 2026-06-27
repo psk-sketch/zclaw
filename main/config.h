@@ -19,201 +19,314 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// -----------------------------------------------------------------------------
+
+// =============================================================
 // Buffer Sizes
-// -----------------------------------------------------------------------------
-#define LLM_REQUEST_BUF_SIZE    12288   // 12KB for outgoing JSON
-#define LLM_RESPONSE_BUF_SIZE   16384   // 16KB for incoming JSON
-#define CHANNEL_RX_BUF_SIZE     512     // Input line buffer
-#define CHANNEL_TX_BUF_SIZE     1024    // Output response buffer for serial/web relay
-#define TOOL_RESULT_BUF_SIZE    512     // Tool execution result
+// =============================================================
+// How many bytes to allocate for each data buffer.
+// Sized to fit the largest realistic payload while staying
+// within the ESP32's limited RAM (~400 KB total DRAM).
 
-// -----------------------------------------------------------------------------
+#define LLM_REQUEST_BUF_SIZE    12288   // 12 KB: JSON body sent TO the LLM API
+#define LLM_RESPONSE_BUF_SIZE   16384   // 16 KB: JSON body received FROM the LLM API (larger because responses can be verbose)
+#define CHANNEL_RX_BUF_SIZE     512     // 512 B: one line of input from serial port or web relay
+#define CHANNEL_TX_BUF_SIZE     1024    // 1 KB: outbound response text going back to serial/web relay
+#define TOOL_RESULT_BUF_SIZE    512     // 512 B: the result string returned by a tool handler (e.g. "Pin 4 = HIGH")
+
+
+// =============================================================
 // Conversation History
-// -----------------------------------------------------------------------------
-#define MAX_HISTORY_TURNS       12      // User/assistant pairs to keep
-#define MAX_MESSAGE_LEN         1024    // Max length per message in history
+// =============================================================
+// Controls how much chat context is kept in RAM and sent to
+// the LLM on each request.  More turns = better context but
+// higher RAM and token usage.
 
-// -----------------------------------------------------------------------------
+#define MAX_HISTORY_TURNS       12      // Keep at most 12 user/assistant back-and-forth pairs
+#define MAX_MESSAGE_LEN         1024    // Each individual message (user or assistant) capped at 1 KB
+
+
+// =============================================================
 // Agent Loop
-// -----------------------------------------------------------------------------
-#define MAX_TOOL_ROUNDS         5       // Max tool call iterations per request
+// =============================================================
+// The agent loop lets the LLM call tools repeatedly in one
+// "session" (e.g. read a pin, decide, write a pin).
+// This cap prevents runaway loops that drain tokens or hang.
 
-// -----------------------------------------------------------------------------
+#define MAX_TOOL_ROUNDS         5       // LLM may call tools at most 5 times before the loop is force-stopped
+
+
+// =============================================================
 // FreeRTOS Tasks
-// -----------------------------------------------------------------------------
-#define AGENT_TASK_STACK_SIZE   8192
-#define CHANNEL_TASK_STACK_SIZE 4096
-#define CRON_TASK_STACK_SIZE    4096
-#define BOOT_OK_TASK_STACK_SIZE 4096
-#define AGENT_TASK_PRIORITY     5
-#define CHANNEL_TASK_PRIORITY   5
-#define CRON_TASK_PRIORITY      4
+// =============================================================
+// Each task runs concurrently on FreeRTOS.  Stack size is in
+// bytes; priority is a small integer (higher = more CPU time).
+// All stacks must fit comfortably inside available heap.
 
-// -----------------------------------------------------------------------------
+#define AGENT_TASK_STACK_SIZE   8192    // 8 KB stack for the main AI agent task (needs most room: JSON, HTTP, tool calls)
+#define CHANNEL_TASK_STACK_SIZE 4096    // 4 KB stack for the input/output channel task (serial or web relay)
+#define CRON_TASK_STACK_SIZE    4096    // 4 KB stack for the cron/scheduler task
+#define BOOT_OK_TASK_STACK_SIZE 4096    // 4 KB stack for the boot-success watchdog task
+#define AGENT_TASK_PRIORITY     5       // Agent and channel share the same priority — both are user-facing
+#define CHANNEL_TASK_PRIORITY   5       // Same as agent; neither starves the other
+#define CRON_TASK_PRIORITY      4       // Cron is slightly lower priority — time-triggered, not interactive
+
+
+// =============================================================
 // Queues
-// -----------------------------------------------------------------------------
-#define INPUT_QUEUE_LENGTH      8
-#define OUTPUT_QUEUE_LENGTH     8
-#define TELEGRAM_OUTPUT_QUEUE_LENGTH 4
+// =============================================================
+// FreeRTOS queues decouple producers from consumers.
+// LENGTH is the number of items (messages/strings) the queue
+// can hold before the sender must block or drop.
 
-// -----------------------------------------------------------------------------
+#define INPUT_QUEUE_LENGTH      8       // Up to 8 incoming messages waiting to be processed by the agent
+#define OUTPUT_QUEUE_LENGTH     8       // Up to 8 outgoing responses waiting to be sent back to the user
+#define TELEGRAM_OUTPUT_QUEUE_LENGTH 4  // Smaller queue for Telegram replies (TLS overhead limits throughput)
+
+
+// =============================================================
 // LLM Backend Configuration
-// -----------------------------------------------------------------------------
+// =============================================================
+// zclaw supports multiple LLM providers.  At runtime one
+// backend is selected; the rest are inactive.
+
+// Enum tags each supported backend with a stable integer ID
 typedef enum {
-    LLM_BACKEND_ANTHROPIC = 0,
-    LLM_BACKEND_OPENAI = 1,
-    LLM_BACKEND_OPENROUTER = 2,
-    LLM_BACKEND_OLLAMA = 3,
+    LLM_BACKEND_ANTHROPIC  = 0,   // Claude models via Anthropic's API
+    LLM_BACKEND_OPENAI     = 1,   // GPT models via OpenAI's API
+    LLM_BACKEND_OPENROUTER = 2,   // Any model via OpenRouter's unified proxy API
+    LLM_BACKEND_OLLAMA     = 3,   // Local/self-hosted models via Ollama
 } llm_backend_t;
 
+// Base URL for each backend's messages/completions endpoint
 #define LLM_API_URL_ANTHROPIC   "https://api.anthropic.com/v1/messages"
 #define LLM_API_URL_OPENAI      "https://api.openai.com/v1/chat/completions"
 #define LLM_API_URL_OPENROUTER  "https://openrouter.ai/api/v1/chat/completions"
-// Loopback default is mainly a placeholder for provisioning/runtime override.
+// Ollama defaults to localhost — intended to be overridden at provisioning time
+// for whatever host/port the local Ollama server is actually running on.
 #define LLM_API_URL_OLLAMA      "http://127.0.0.1:11434/v1/chat/completions"
 
-#define LLM_DEFAULT_MODEL_ANTHROPIC   "claude-sonnet-4-6"
-#define LLM_DEFAULT_MODEL_OPENAI      "gpt-5.4"
-#define LLM_DEFAULT_MODEL_OPENROUTER  "openrouter/auto"
-#define LLM_DEFAULT_MODEL_OLLAMA      "qwen3:8b"
+// Default model string sent in the API request body for each backend
+#define LLM_DEFAULT_MODEL_ANTHROPIC   "claude-sonnet-4-6"    // Anthropic mid-tier model
+#define LLM_DEFAULT_MODEL_OPENAI      "gpt-5.4"              // OpenAI model
+#define LLM_DEFAULT_MODEL_OPENROUTER  "openrouter/auto"      // Let OpenRouter pick the best available model
+#define LLM_DEFAULT_MODEL_OLLAMA      "qwen3:8b"             // 8-billion-parameter local model
 
-#define LLM_API_KEY_MAX_LEN       511
-#define LLM_API_KEY_BUF_SIZE      (LLM_API_KEY_MAX_LEN + 1)
+// API key storage sizing
+#define LLM_API_KEY_MAX_LEN       511                         // Max characters in an API key (no null terminator)
+#define LLM_API_KEY_BUF_SIZE      (LLM_API_KEY_MAX_LEN + 1)  // +1 for the null terminator
+// "Bearer " prefix (7 chars) + key + null terminator = full Authorization header value
 #define LLM_AUTH_HEADER_BUF_SIZE  (sizeof("Bearer ") - 1 + LLM_API_KEY_MAX_LEN + 1)
 
-#define LLM_MAX_TOKENS          1024
-#define HTTP_TIMEOUT_MS         30000   // 30 seconds for API calls
-#define LLM_HTTP_TIMEOUT_MS     20000   // 20 seconds for LLM API calls
-#define LLM_MAX_RETRIES         3       // Max LLM attempts per round (including first attempt)
-#define LLM_RETRY_BASE_MS       2000    // Initial retry delay after a failed LLM call
-#define LLM_RETRY_MAX_MS        10000   // Maximum exponential retry delay
-#define LLM_RETRY_BUDGET_MS     45000   // Max wall-clock retry budget per LLM round
+#define LLM_MAX_TOKENS          1024    // Cap on tokens the LLM may generate per response (controls cost & RAM)
+#define HTTP_TIMEOUT_MS         30000   // 30 s: general HTTP request timeout (non-LLM calls)
+#define LLM_HTTP_TIMEOUT_MS     20000   // 20 s: tighter timeout specifically for LLM API calls
+#define LLM_MAX_RETRIES         3       // Total attempts per LLM round (1 initial + 2 retries)
+#define LLM_RETRY_BASE_MS       2000    // First retry waits 2 s (exponential back-off base)
+#define LLM_RETRY_MAX_MS        10000   // Back-off is capped at 10 s per retry interval
+#define LLM_RETRY_BUDGET_MS     45000   // Hard wall-clock limit: give up retrying after 45 s total
 
-// -----------------------------------------------------------------------------
+
+// =============================================================
 // System Prompt
-// -----------------------------------------------------------------------------
+// =============================================================
+// The fixed instruction block prepended to every conversation
+// so the LLM knows its identity, constraints, and rules.
+// Written as a multi-line string macro using backslash continuation.
+
 #define SYSTEM_PROMPT \
     "You are zclaw, an AI agent running on an ESP32 with 400KB RAM and FreeRTOS. " \
-    "You run on the device, not in a cloud session. " \
-    "Be concise. Return plain text only, never markdown. " \
-    "Use tools to control hardware, memory, schedules, personas, and custom tools. " \
-    "When asked for multiple GPIO states, prefer one gpio_read_all call. " \
+    /* Reminds the model it is on-device, not a cloud chatbot */                    \
+    "You run on the device, not in a cloud session. "                               \
+    /* Keeps responses short to save tokens and fit small display buffers */        \
+    "Be concise. Return plain text only, never markdown. "                          \
+    /* Lists the categories of built-in tools available */                          \
+    "Use tools to control hardware, memory, schedules, personas, and custom tools. "\
+    /* Performance hint: batch GPIO reads into one call instead of many */          \
+    "When asked for multiple GPIO states, prefer one gpio_read_all call. "          \
+    /* Prevents the model from spontaneously switching personality */               \
     "Use persona tools only when the user explicitly asks to view, set, or reset persona. " \
-    "Do not change persona from casual wording. " \
-    "When asked what is saved or set on the device, verify with tools. " \
-    "When a custom tool returns an action, carry it out with built-in tools." \
-    "Answer general knowledge, programming, electronics, and educational questions. "
+    "Do not change persona from casual wording. "                                   \
+    /* Forces the model to verify device state via tools, not from memory */        \
+    "When asked what is saved or set on the device, verify with tools. "            \
+    /* Ensures dynamic/custom tool results are acted upon, not just reported */     \
+    "When a custom tool returns an action, carry it out with built-in tools."
 
-// -----------------------------------------------------------------------------
-// GPIO tool safety range (configurable via Kconfig)
-// -----------------------------------------------------------------------------
+
+// =============================================================
+// GPIO Tool Safety Range  (configurable via Kconfig / menuconfig)
+// =============================================================
+// These defines set which GPIO pin numbers the AI is allowed
+// to touch.  They can be overridden at build time through
+// ESP-IDF's Kconfig system (sdkconfig / menuconfig) so the
+// same firmware can be safely flashed to different boards.
+
+// Minimum allowed GPIO pin number
 #ifdef CONFIG_ZCLAW_GPIO_MIN_PIN
-#define GPIO_MIN_PIN            CONFIG_ZCLAW_GPIO_MIN_PIN
+#define GPIO_MIN_PIN            CONFIG_ZCLAW_GPIO_MIN_PIN   // Use the Kconfig value if set
 #else
-#define GPIO_MIN_PIN            2
+#define GPIO_MIN_PIN            2                           // Default: start at pin 2 (avoid boot-strapping pins 0 & 1)
 #endif
 
+// Maximum allowed GPIO pin number
 #ifdef CONFIG_ZCLAW_GPIO_MAX_PIN
-#define GPIO_MAX_PIN            CONFIG_ZCLAW_GPIO_MAX_PIN
+#define GPIO_MAX_PIN            CONFIG_ZCLAW_GPIO_MAX_PIN   // Use the Kconfig value if set
 #else
-#define GPIO_MAX_PIN            10
+#define GPIO_MAX_PIN            10                          // Default: stop at pin 10
 #endif
 
+// Optional comma-separated list of specific allowed pins
+// If non-empty this overrides the MIN/MAX range scan in gpio_read_all.
 #ifdef CONFIG_ZCLAW_GPIO_ALLOWED_PINS
-#define GPIO_ALLOWED_PINS_CSV   CONFIG_ZCLAW_GPIO_ALLOWED_PINS
+#define GPIO_ALLOWED_PINS_CSV   CONFIG_ZCLAW_GPIO_ALLOWED_PINS  // e.g. "4,5,18,19"
 #else
-#define GPIO_ALLOWED_PINS_CSV   ""
+#define GPIO_ALLOWED_PINS_CSV   ""                              // Empty = use MIN/MAX range instead
 #endif
 
+// Compile-time sanity check: catch a mis-configured range before linking
 #if GPIO_MIN_PIN > GPIO_MAX_PIN
 #error "GPIO_MIN_PIN must be <= GPIO_MAX_PIN"
 #endif
 
-// -----------------------------------------------------------------------------
-// NVS (persistent storage)
-// -----------------------------------------------------------------------------
-#define NVS_NAMESPACE           "zclaw"
-#define NVS_NAMESPACE_CRON      "zc_cron"
-#define NVS_NAMESPACE_TOOLS     "zc_tools"
-#define NVS_NAMESPACE_CONFIG    "zc_config"
-#define NVS_MAX_KEY_LEN         15      // NVS limit
-#define NVS_MAX_VALUE_LEN       512     // Increased for tool/cron definitions
 
-// -----------------------------------------------------------------------------
+// =============================================================
+// NVS (Non-Volatile Storage — flash-backed key/value store)
+// =============================================================
+// NVS is the ESP-IDF equivalent of EEPROM: survives power loss.
+// Different namespaces act like separate "folders" in flash,
+// preventing key collisions between subsystems.
+
+#define NVS_NAMESPACE           "zclaw"       // Default namespace for general agent data
+#define NVS_NAMESPACE_CRON      "zc_cron"     // Namespace for scheduled cron entries
+#define NVS_NAMESPACE_TOOLS     "zc_tools"    // Namespace for user-registered dynamic tools
+#define NVS_NAMESPACE_CONFIG    "zc_config"   // Namespace for runtime config (API keys, model, timezone, etc.)
+#define NVS_MAX_KEY_LEN         15            // NVS hardware limit: keys must be ≤ 15 characters
+#define NVS_MAX_VALUE_LEN       512           // Max bytes for a single NVS string value (tool/cron definitions)
+
+
+// =============================================================
 // WiFi
-// -----------------------------------------------------------------------------
-#define WIFI_MAX_RETRY          10
-#define WIFI_RETRY_DELAY_MS     1000
+// =============================================================
 
-// -----------------------------------------------------------------------------
-// Telegram
-// -----------------------------------------------------------------------------
-#define TELEGRAM_API_URL        "https://api.telegram.org/bot"
-#define TELEGRAM_POLL_TIMEOUT   30      // Long polling timeout (seconds)
-// OpenRouter can require tighter heap headroom during TLS setup on small targets.
-// Use a shorter Telegram long-poll window only for that backend to reduce overlap.
-#define TELEGRAM_POLL_TIMEOUT_OPENROUTER 8
-// Classic ESP32 can exhaust/fragment heap when Telegram long-poll TLS overlaps with
-// outbound LLM HTTPS on the same device. Keep poll windows shorter on that target.
-#define TELEGRAM_POLL_TIMEOUT_ESP32 5
-#define TELEGRAM_POLL_INTERVAL  100     // ms between poll attempts on error
-#define TELEGRAM_MAX_MSG_LEN    4096    // Max message length
-#define TELEGRAM_FLUSH_ON_START 1       // Drop stale pending updates at startup
-#define TELEGRAM_STALE_POLL_LOG_INTERVAL 4          // Log every N stale-only polls
-#define TELEGRAM_STALE_POLL_RESYNC_STREAK 8         // Trigger auto-resync after this streak
-#define TELEGRAM_STALE_POLL_RESYNC_COOLDOWN_MS 60000 // Min gap between auto-resync attempts
-#define START_COMMAND_COOLDOWN_MS 30000 // Debounce repeated Telegram /start bursts
-#define MESSAGE_REPLAY_COOLDOWN_MS 20000 // Suppress repeated identical non-command bursts
+#define WIFI_MAX_RETRY          10            // Try to (re)connect up to 10 times before giving up
+#define WIFI_RETRY_DELAY_MS     1000          // Wait 1 second between each retry attempt
 
-// -----------------------------------------------------------------------------
+
+// =============================================================
+// Telegram Bot Integration
+// =============================================================
+// zclaw can receive user messages and send replies via a
+// Telegram bot using long-polling (no inbound server needed).
+
+#define TELEGRAM_API_URL        "https://api.telegram.org/bot"  // Base URL; bot token is appended at runtime
+
+#define TELEGRAM_POLL_TIMEOUT   30      // Default long-poll window: ask Telegram to hold the connection open 30 s
+                                        // before returning an empty response if no messages arrived
+
+// OpenRouter's TLS handshake is heavier; a shorter poll window
+// reduces the chance of two simultaneous HTTPS connections
+// exhausting heap on RAM-limited targets.
+#define TELEGRAM_POLL_TIMEOUT_OPENROUTER 8   // 8 s poll window when using the OpenRouter backend
+
+// Classic ESP32 (single-core, 520 KB RAM) can run out of heap if
+// Telegram's TLS session overlaps with an outbound LLM HTTPS call.
+// Shorter poll window = connections are less likely to overlap.
+#define TELEGRAM_POLL_TIMEOUT_ESP32 5        // 5 s poll window on the classic ESP32 target
+
+#define TELEGRAM_POLL_INTERVAL  100     // ms to wait between retrying after a failed poll (error back-off)
+#define TELEGRAM_MAX_MSG_LEN    4096    // Discard or truncate Telegram messages longer than 4 KB
+#define TELEGRAM_FLUSH_ON_START 1       // 1 = discard any messages that arrived while the device was offline at startup
+
+// Anti-spam / de-duplication
+#define TELEGRAM_STALE_POLL_LOG_INTERVAL    4   // Log a "stale poll" warning only every 4th consecutive empty poll
+#define TELEGRAM_STALE_POLL_RESYNC_STREAK   8   // After 8 consecutive stale polls, trigger an offset resync
+#define TELEGRAM_STALE_POLL_RESYNC_COOLDOWN_MS 60000  // But don't resync more often than once per minute
+
+#define START_COMMAND_COOLDOWN_MS   30000   // Ignore /start commands repeated within 30 s (debounce Telegram glitches)
+#define MESSAGE_REPLAY_COOLDOWN_MS  20000   // Suppress identical non-command messages repeated within 20 s
+
+
+// =============================================================
 // Cron / Scheduler
-// -----------------------------------------------------------------------------
-#define CRON_CHECK_INTERVAL_MS  10000   // Check schedules every 10 seconds
-#define CRON_MAX_ENTRIES        16      // Max scheduled tasks
-#define CRON_MAX_ACTION_LEN     256     // Max action string length
+// =============================================================
+// A lightweight time-based task scheduler stored in NVS.
+// The cron task wakes up periodically and fires any entries
+// whose schedule matches the current time.
 
-// -----------------------------------------------------------------------------
+#define CRON_CHECK_INTERVAL_MS  10000   // Wake the cron task every 10 seconds to check schedules
+#define CRON_MAX_ENTRIES        16      // At most 16 scheduled tasks can be stored
+#define CRON_MAX_ACTION_LEN     256     // Each action string (what to do when triggered) is at most 256 bytes
+
+
+// =============================================================
 // Factory Reset
-// -----------------------------------------------------------------------------
+// =============================================================
+// Holding a physical button LOW for long enough wipes NVS and
+// reboots into a clean state — a hardware escape hatch.
+
 #ifdef CONFIG_ZCLAW_FACTORY_RESET_PIN
-#define FACTORY_RESET_PIN       CONFIG_ZCLAW_FACTORY_RESET_PIN
+#define FACTORY_RESET_PIN       CONFIG_ZCLAW_FACTORY_RESET_PIN   // Board-specific pin from Kconfig
 #else
-#define FACTORY_RESET_PIN       9       // Hold low for 5 seconds to reset
+#define FACTORY_RESET_PIN       9       // Default: GPIO 9 — hold LOW to trigger reset
 #endif
 
 #ifdef CONFIG_ZCLAW_FACTORY_RESET_HOLD_MS
-#define FACTORY_RESET_HOLD_MS   CONFIG_ZCLAW_FACTORY_RESET_HOLD_MS
+#define FACTORY_RESET_HOLD_MS   CONFIG_ZCLAW_FACTORY_RESET_HOLD_MS  // Configurable hold time
 #else
-#define FACTORY_RESET_HOLD_MS   5000
+#define FACTORY_RESET_HOLD_MS   5000    // Default: must hold the button for 5 full seconds
 #endif
 
-// -----------------------------------------------------------------------------
-// NTP (time sync)
-// -----------------------------------------------------------------------------
-#define NTP_SERVER              "pool.ntp.org"
-#define NTP_SYNC_TIMEOUT_MS     10000
-#define DEFAULT_TIMEZONE_POSIX  "IST-5:30"
-#define TIMEZONE_MAX_LEN        64
 
-// -----------------------------------------------------------------------------
+// =============================================================
+// NTP (Network Time Protocol — clock synchronisation)
+// =============================================================
+// The ESP32 has no real-time clock battery; it must sync time
+// over WiFi after each boot so cron schedules are correct.
+
+#define NTP_SERVER              "pool.ntp.org"  // Public NTP pool — resolves to a nearby stratum-2 server
+#define NTP_SYNC_TIMEOUT_MS     10000           // Give up waiting for NTP sync after 10 seconds
+#define DEFAULT_TIMEZONE_POSIX  "UTC0"          // Default timezone: UTC with no DST offset
+#define TIMEZONE_MAX_LEN        64              // Max length of a POSIX timezone string (e.g. "IST-5:30")
+
+
+// =============================================================
 // Dynamic Tools
-// -----------------------------------------------------------------------------
-#define MAX_DYNAMIC_TOOLS       8       // Max user-registered tools
-#define TOOL_NAME_MAX_LEN       24
-#define TOOL_DESC_MAX_LEN       128
+// =============================================================
+// Users can register their own custom tools at runtime (stored
+// in NVS). These are loaded and exposed to the LLM alongside
+// the built-in tools.
 
-// -----------------------------------------------------------------------------
+#define MAX_DYNAMIC_TOOLS       8       // At most 8 user-defined tools can be registered simultaneously
+#define TOOL_NAME_MAX_LEN       24      // Tool names are at most 24 characters (e.g. "read_temperature")
+#define TOOL_DESC_MAX_LEN       128     // Tool descriptions sent to the LLM are at most 128 characters
+
+
+// =============================================================
+// GPIO Mapping Subsystem
+// =============================================================
+// Constants for the persistent GPIO mapping subsystem.
+#define GPIO_MAPPING_KEY_PREFIX   "u_gpio_"
+#define GPIO_MAPPING_MAX_NAME_LEN 16
+
+
+// =============================================================
 // Boot Loop Protection
-// -----------------------------------------------------------------------------
-#define MAX_BOOT_FAILURES       4       // Enter safe mode after N consecutive failures
-#define BOOT_SUCCESS_DELAY_MS   30000   // Clear boot counter after this time connected
+// =============================================================
+// If the firmware crashes repeatedly on startup, it enters a
+// minimal "safe mode" so the user can recover via serial.
 
-// -----------------------------------------------------------------------------
+#define MAX_BOOT_FAILURES       4       // Enter safe mode after 4 consecutive crash-reboots
+#define BOOT_SUCCESS_DELAY_MS   30000   // If the device stays up for 30 s, reset the crash counter to 0
+
+
+// =============================================================
 // Rate Limiting
-// -----------------------------------------------------------------------------
-#define RATELIMIT_MAX_PER_HOUR      100     // Max LLM requests per hour
-#define RATELIMIT_MAX_PER_DAY       1000    // Max LLM requests per day
-#define RATELIMIT_ENABLED           1       // Set to 0 to disable
+// =============================================================
+// Prevents runaway usage (or abuse via Telegram) from burning
+// through API quota or overheating the device with requests.
+
+#define RATELIMIT_MAX_PER_HOUR      100     // At most 100 LLM API calls in any 60-minute window
+#define RATELIMIT_MAX_PER_DAY       1000    // At most 1000 LLM API calls in any 24-hour window
+#define RATELIMIT_ENABLED           1       // Master switch: set to 0 to disable all rate limiting (dev/test)
+
 
 #endif // CONFIG_H  ← closes the #ifndef CONFIG_H include guard at the top
