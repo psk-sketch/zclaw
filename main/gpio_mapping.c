@@ -531,7 +531,7 @@ esp_err_t gpio_mapping_delete(const char *device, const char *password)
 
     // Delete mapping from NVS and remove device name from metadata list
     err = memory_delete(key);
-    if (err == ESP_OK || err == ESP_ERR_NVS_NOT_FOUND) {
+    if (err == ESP_OK || err == ESP_ERR_NOT_FOUND) {
         esp_err_t list_err = list_remove_device(normalized);
         if (err == ESP_OK) {
             err = list_err;
@@ -680,7 +680,7 @@ esp_err_t gpio_mapping_set_password(const char *new_password, const char *curren
     if (new_password == NULL || strlen(new_password) == 0) {
         // Clear/delete password
         err = memory_delete("gpio_pwd_hash");
-        if (err == ESP_ERR_NVS_NOT_FOUND) {
+        if (err == ESP_ERR_NOT_FOUND) {
             err = ESP_OK; // Deleting a non-existent password is a no-op success
         }
     } else {
