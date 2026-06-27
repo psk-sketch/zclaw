@@ -7,125 +7,294 @@
  * 3) Add one TOOL_ENTRY(...) line below.
  */
 
-// GPIO
+// =============================================================================
+// GPIO Tools
+// These tools allow reading and writing digital GPIO pins on the ESP32.
+// All pin access is subject to an allow-list enforced inside the handlers.
+// =============================================================================
+
+/* gpio_write — drives a single allowed GPIO pin HIGH (1) or LOW (0).
+ * Required inputs: pin (integer), state (integer, 0 or 1) */
 TOOL_ENTRY("gpio_write",
            "Set an allowed GPIO HIGH or LOW.",
            "{\"type\":\"object\",\"properties\":{\"pin\":{\"type\":\"integer\"},\"state\":{\"type\":\"integer\"}},\"required\":[\"pin\",\"state\"]}",
            tools_gpio_write_handler)
+
+/* gpio_read — samples the current logic level of a single allowed GPIO pin.
+ * Required inputs: pin (integer) */
 TOOL_ENTRY("gpio_read",
            "Read an allowed GPIO.",
            "{\"type\":\"object\",\"properties\":{\"pin\":{\"type\":\"integer\"}},\"required\":[\"pin\"]}",
            tools_gpio_read_handler)
+
+/* gpio_read_all — returns the current state of every pin on the allow-list
+ * in a single call. No inputs required. */
 TOOL_ENTRY("gpio_read_all",
            "Read all allowed GPIO states.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_gpio_read_all_handler)
+
+/* delay — blocks execution for the specified number of milliseconds.
+ * Useful for sequencing multi-step GPIO or peripheral operations.
+ * Required inputs: milliseconds (integer) */
 TOOL_ENTRY("delay",
            "Wait in milliseconds.",
            "{\"type\":\"object\",\"properties\":{\"milliseconds\":{\"type\":\"integer\"}},\"required\":[\"milliseconds\"]}",
            tools_delay_handler)
+
+/* gpio_mapping_save — saves a persistent, case-insensitive mapping of a device name to a GPIO pin.
+ * Mappings persist across reboots and mapped device names can later be used in GPIO commands instead of pin numbers.
+ * Required inputs: device (string), pin (integer)
+ * Optional inputs: password (string) */
+TOOL_ENTRY("gpio_mapping_save",
+           "Save a case-insensitive device-to-pin mapping (e.g. 'led' to 4) that persists across reboots. The mapped name can later be used in GPIO commands. Optional password.",
+           "{\"type\":\"object\",\"properties\":{\"device\":{\"type\":\"string\"},\"pin\":{\"type\":\"integer\"},\"password\":{\"type\":\"string\"}},\"required\":[\"device\",\"pin\"]}",
+           tools_gpio_mapping_save_handler)
+
+/* gpio_mapping_delete — deletes a persistent GPIO mapping for a device name (case-insensitive).
+ * Mappings persist across reboots and mapped device names can later be used in GPIO commands.
+ * Required inputs: device (string)
+ * Optional inputs: password (string) */
+TOOL_ENTRY("gpio_mapping_delete",
+           "Delete a case-insensitive GPIO mapping. Mappings persist across reboots and mapped names can later be used in GPIO commands. Optional password.",
+           "{\"type\":\"object\",\"properties\":{\"device\":{\"type\":\"string\"},\"password\":{\"type\":\"string\"}},\"required\":[\"device\"]}",
+           tools_gpio_mapping_delete_handler)
+
+/* gpio_mapping_list — lists all registered persistent GPIO mappings.
+ * Mappings persist across reboots, are case-insensitive and mapped device names can later be used in GPIO commands.
+ * No inputs required. */
+TOOL_ENTRY("gpio_mapping_list",
+           "List all persistent GPIO mappings (which are case-insensitive, persist across reboots, and can later be used in GPIO commands).",
+           "{\"type\":\"object\",\"properties\":{}}",
+           tools_gpio_mapping_list_handler)
+
+// =============================================================================
+// I2C Tools
+// These tools provide raw access to I2C buses. The caller specifies SDA/SCL
+// pins and an optional frequency; the handlers open/close the bus per call.
+// =============================================================================
+
+/* i2c_scan — probes all 7-bit addresses on the specified bus and returns
+ * a list of responding device addresses.
+ * Required inputs: sda_pin, scl_pin (integers)
+ * Optional inputs: frequency_hz (integer, defaults to 100 000 Hz if omitted) */
 TOOL_ENTRY("i2c_scan",
            "Scan an I2C bus for devices.",
            "{\"type\":\"object\",\"properties\":{\"sda_pin\":{\"type\":\"integer\"},\"scl_pin\":{\"type\":\"integer\"},\"frequency_hz\":{\"type\":\"integer\"}},\"required\":[\"sda_pin\",\"scl_pin\"]}",
            tools_i2c_scan_handler)
+
+/* i2c_write — sends a sequence of bytes (supplied as a hex string) to the
+ * given 7-bit device address on the specified bus.
+ * Required inputs: sda_pin, scl_pin, address (integers), data_hex (string, e.g. "0F A3")
+ * Optional inputs: frequency_hz */
 TOOL_ENTRY("i2c_write",
            "Write hex bytes to an I2C address.",
            "{\"type\":\"object\",\"properties\":{\"sda_pin\":{\"type\":\"integer\"},\"scl_pin\":{\"type\":\"integer\"},\"address\":{\"type\":\"integer\"},\"data_hex\":{\"type\":\"string\"},\"frequency_hz\":{\"type\":\"integer\"}},\"required\":[\"sda_pin\",\"scl_pin\",\"address\",\"data_hex\"]}",
            tools_i2c_write_handler)
+
+/* i2c_read — reads a fixed number of bytes from the given device address.
+ * Required inputs: sda_pin, scl_pin, address, read_length (integers)
+ * Optional inputs: frequency_hz */
 TOOL_ENTRY("i2c_read",
            "Read bytes from an I2C address.",
            "{\"type\":\"object\",\"properties\":{\"sda_pin\":{\"type\":\"integer\"},\"scl_pin\":{\"type\":\"integer\"},\"address\":{\"type\":\"integer\"},\"read_length\":{\"type\":\"integer\"},\"frequency_hz\":{\"type\":\"integer\"}},\"required\":[\"sda_pin\",\"scl_pin\",\"address\",\"read_length\"]}",
            tools_i2c_read_handler)
+
+/* i2c_write_read — performs a combined write-then-read (register-read pattern):
+ * writes write_hex bytes to the device, then reads read_length bytes back.
+ * Commonly used to address a register before reading its value.
+ * Required inputs: sda_pin, scl_pin, address, write_hex, read_length
+ * Optional inputs: frequency_hz */
 TOOL_ENTRY("i2c_write_read",
            "Write hex bytes, then read from the same I2C address.",
            "{\"type\":\"object\",\"properties\":{\"sda_pin\":{\"type\":\"integer\"},\"scl_pin\":{\"type\":\"integer\"},\"address\":{\"type\":\"integer\"},\"write_hex\":{\"type\":\"string\"},\"read_length\":{\"type\":\"integer\"},\"frequency_hz\":{\"type\":\"integer\"}},\"required\":[\"sda_pin\",\"scl_pin\",\"address\",\"write_hex\",\"read_length\"]}",
            tools_i2c_write_read_handler)
+
+/* dht_read — reads temperature and humidity from a DHT11 or DHT22 sensor
+ * connected to the specified GPIO pin.
+ * Required inputs: pin (integer), model ("dht11" or "dht22")
+ * Optional inputs: retries (integer, number of re-attempts on checksum failure) */
 TOOL_ENTRY("dht_read",
            "Read a DHT11 or DHT22 sensor.",
            "{\"type\":\"object\",\"properties\":{\"pin\":{\"type\":\"integer\"},\"model\":{\"type\":\"string\",\"enum\":[\"dht11\",\"dht22\"]},\"retries\":{\"type\":\"integer\"}},\"required\":[\"pin\",\"model\"]}",
            tools_dht_read_handler)
 
-// Memory
+// =============================================================================
+// Memory Tools
+// Persistent key-value store backed by NVS (Non-Volatile Storage).
+// Values survive reboots. Keys and values are both UTF-8 strings.
+// =============================================================================
+
+/* memory_set — writes or overwrites a named value in persistent storage.
+ * Required inputs: key (string), value (string) */
 TOOL_ENTRY("memory_set",
            "Store a user memory value.",
            "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}},\"required\":[\"key\",\"value\"]}",
            tools_memory_set_handler)
+
+/* memory_get — retrieves the value associated with the given key.
+ * Required inputs: key (string) */
 TOOL_ENTRY("memory_get",
            "Read a user memory value.",
            "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\"}},\"required\":[\"key\"]}",
            tools_memory_get_handler)
+
+/* memory_list — returns all stored keys so the assistant can discover what
+ * has been saved. No inputs required. */
 TOOL_ENTRY("memory_list",
            "List user memory keys.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_memory_list_handler)
+
+/* memory_delete — removes a single key and its associated value from storage.
+ * Required inputs: key (string) */
 TOOL_ENTRY("memory_delete",
            "Delete a user memory key.",
            "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\"}},\"required\":[\"key\"]}",
            tools_memory_delete_handler)
+
+// =============================================================================
+// Persona Tools
+// Control the assistant's conversational style. The persona is persisted in
+// NVS so it survives reboots. Only change on explicit user instruction.
+// =============================================================================
+
+/* set_persona — switches the assistant's response style.
+ * Allowed values: "neutral", "friendly", "technical", "witty"
+ * Required inputs: persona (string enum) */
 TOOL_ENTRY("set_persona",
            "Set the assistant persona when the user explicitly asks.",
            "{\"type\":\"object\",\"properties\":{\"persona\":{\"type\":\"string\",\"enum\":[\"neutral\",\"friendly\",\"technical\",\"witty\"]}},\"required\":[\"persona\"]}",
            tools_set_persona_handler)
+
+/* get_persona — returns the currently active persona name.
+ * No inputs required. */
 TOOL_ENTRY("get_persona",
            "Get the current assistant persona.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_get_persona_handler)
+
+/* reset_persona — restores the persona to the default "neutral" style.
+ * No inputs required. */
 TOOL_ENTRY("reset_persona",
            "Reset the assistant persona to neutral.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_reset_persona_handler)
 
-// Cron/Scheduler
+// =============================================================================
+// Cron / Scheduler Tools
+// Schedule actions to run periodically, at a fixed daily time, or once after
+// a delay. Actions are stored as strings and executed by the cron subsystem.
+// =============================================================================
+
+/* cron_set — creates a new scheduled task.
+ * Required inputs: type ("periodic" | "daily" | "once"), action (string)
+ * Optional inputs depend on type:
+ *   periodic — interval_minutes (integer)
+ *   daily    — hour, minute (integers, 24-hour clock)
+ *   once     — delay_minutes (integer, fires once after this delay) */
 TOOL_ENTRY("cron_set",
            "Create a scheduled task.",
            "{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"periodic\",\"daily\",\"once\"]},\"interval_minutes\":{\"type\":\"integer\"},\"delay_minutes\":{\"type\":\"integer\"},\"hour\":{\"type\":\"integer\"},\"minute\":{\"type\":\"integer\"},\"action\":{\"type\":\"string\"}},\"required\":[\"type\",\"action\"]}",
            tools_cron_set_handler)
+
+/* cron_list — returns all currently scheduled tasks with their IDs, types,
+ * timing parameters, and action strings. No inputs required. */
 TOOL_ENTRY("cron_list",
            "List scheduled tasks.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_cron_list_handler)
+
+/* cron_delete — removes a scheduled task by its numeric ID (obtained from
+ * cron_list). Required inputs: id (integer) */
 TOOL_ENTRY("cron_delete",
            "Delete a scheduled task.",
            "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}},\"required\":[\"id\"]}",
            tools_cron_delete_handler)
+
+/* get_time — returns the current local date and time on the device.
+ * Requires NTP sync or a manually set RTC to be accurate.
+ * No inputs required. */
 TOOL_ENTRY("get_time",
            "Get local device time.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_get_time_handler)
+
+/* set_timezone — configures the device's local timezone using a POSIX TZ
+ * string (e.g. "IST-5:30" or "America/New_York").
+ * Required inputs: timezone (string) */
 TOOL_ENTRY("set_timezone",
            "Set the device timezone.",
            "{\"type\":\"object\",\"properties\":{\"timezone\":{\"type\":\"string\"}},\"required\":[\"timezone\"]}",
            tools_set_timezone_handler)
+
+/* get_timezone — returns the currently configured POSIX TZ string.
+ * No inputs required. */
 TOOL_ENTRY("get_timezone",
            "Get the device timezone.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_get_timezone_handler)
 
-// System
+// =============================================================================
+// System Tools
+// Low-level device information.
+// =============================================================================
+
+/* get_version — returns the firmware version string compiled into the image.
+ * Useful for diagnostics and update checks. No inputs required. */
 TOOL_ENTRY("get_version",
            "Get firmware version.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_get_version_handler)
 
-// Health
+// =============================================================================
+// Health & Diagnostics Tools
+// Report on device vitals such as free heap, uptime, and task metrics.
+// =============================================================================
+
+/* get_health — returns a quick snapshot of device health indicators
+ * (e.g. free heap, WiFi RSSI, uptime). No inputs required. */
 TOOL_ENTRY("get_health",
            "Get device health.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_get_health_handler)
+
+/* get_diagnostics — returns detailed runtime diagnostics.
+ * Optional inputs:
+ *   scope   — one of "quick", "runtime", "memory", "rates", "time", "all"
+ *             (defaults to "quick" if omitted)
+ *   verbose — boolean, includes extra detail when true */
 TOOL_ENTRY("get_diagnostics",
            "Get runtime diagnostics.",
            "{\"type\":\"object\",\"properties\":{\"scope\":{\"type\":\"string\",\"enum\":[\"quick\",\"runtime\",\"memory\",\"rates\",\"time\",\"all\"]},\"verbose\":{\"type\":\"boolean\"}}}",
            tools_get_diagnostics_handler)
 
+// =============================================================================
 // User Tool Management
+// Allow the assistant (or the user) to define, list, and remove custom tools
+// at runtime. User tools are stored in NVS and loaded on boot by user_tools_init().
+// =============================================================================
+
+/* create_tool — defines a new user tool and persists it to NVS.
+ * Required inputs:
+ *   name        — unique identifier string for the tool
+ *   description — human-readable explanation shown to the model
+ *   action      — the command/expression the tool executes when called */
 TOOL_ENTRY("create_tool",
            "Create a user tool.",
            "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"},\"action\":{\"type\":\"string\"}},\"required\":[\"name\",\"description\",\"action\"]}",
            tools_create_tool_handler)
+
+/* list_user_tools — returns the names, descriptions, and actions of all
+ * user-created tools currently stored in NVS. No inputs required. */
 TOOL_ENTRY("list_user_tools",
            "List user-created tools.",
            "{\"type\":\"object\",\"properties\":{}}",
            tools_list_user_tools_handler)
+
+/* delete_user_tool — removes a user-created tool from NVS by name.
+ * The tool is immediately unregistered for the current session.
+ * Required inputs: name (string) */
 TOOL_ENTRY("delete_user_tool",
            "Delete a user-created tool.",
            "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}",
