@@ -502,7 +502,7 @@ bool tools_gpio_mapping_delete_handler(const cJSON *input, char *result, size_t 
     } else {
         if (err == ESP_ERR_INVALID_ARG) {
             snprintf(result, result_len, "Error: incorrect password or invalid device");
-        } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        } else if (err == ESP_ERR_NOT_FOUND) {
             snprintf(result, result_len, "Error: mapping not found for device '%s'", device);
         } else {
             snprintf(result, result_len, "Error: failed to delete mapping (code %d)", err);
