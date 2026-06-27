@@ -21,6 +21,7 @@
 #include "tools_common.h"     // Shared helpers, e.g. tools_validate_allowed_gpio_pin()
 #include "config.h"           // Board-level config: GPIO_MIN_PIN, GPIO_MAX_PIN, GPIO_ALLOWED_PINS_CSV, etc.
 #include "gpio_policy.h"      // Policy layer: gpio_policy_pin_is_allowed(), gpio_input_enable(), etc.
+#include "gpio_mapping.h"     // Persistent GPIO mapping module
 #include "driver/gpio.h"      // ESP-IDF GPIO driver: gpio_set_direction(), gpio_set_level(), gpio_get_level()
 #include "esp_log.h"          // ESP-IDF logging: ESP_LOGI() macro
 #include "freertos/FreeRTOS.h"// FreeRTOS base header (required before task.h)
@@ -29,7 +30,6 @@
 #include <stdio.h>            // snprintf()
 #include <stdlib.h>           // strtol() – string-to-long for parsing CSV pin numbers
 #include <string.h>           // String utilities (included for general use)
-#include "gpio_mapping.h"
 
 /* --- Constants --------------------------------------------- */
 
@@ -95,6 +95,58 @@ static bool gpio_append_read_state(char **cursor, size_t *remaining, int pin, bo
 
 
 /* ============================================================
+ * STATIC HELPER: resolve_pin_argument()
+ *
+ * Resolves the "pin" JSON field to a GPIO pin number.
+ * The field can be either a numeric GPIO pin or a mapped device name.
+ * If a device name is provided, it is looked up in the gpio_mapping module.
+ *
+ * Parameters:
+ *   pin_json   - the cJSON item representing the pin argument
+ *   pin_out    - pointer where the resolved GPIO number will be stored
+ *   result     - buffer for error messages
+ *   result_len - size of the result buffer
+ *
+ * Returns true if the pin is successfully resolved, false otherwise.
+ * ============================================================ */
+static bool resolve_pin_argument(const cJSON *pin_json, int *pin_out, char *result, size_t result_len)
+{
+    // Ensure the pin json element is not NULL
+    if (!pin_json) {
+        snprintf(result, result_len, "pin must be a GPIO number or mapped device name");
+        return false;
+    }
+
+    // Check if the pin is a numeric value
+    if (cJSON_IsNumber(pin_json)) {
+        // Device-name resolution logic: backward compatibility with numeric pins
+        *pin_out = pin_json->valueint;
+        return true;
+    } 
+    // Check if the pin is a string representing a mapped device name
+    else if (cJSON_IsString(pin_json)) {
+        const char *device_name = pin_json->valuestring;
+        if (!device_name || strlen(device_name) == 0) {
+            snprintf(result, result_len, "pin must be a GPIO number or mapped device name");
+            return false;
+        }
+        // Device-name resolution logic: call gpio_mapping_get_pin() to lookup the device name.
+        // If the mapping exists, we use the returned GPIO number.
+        // If the mapping does not exist, we return the error message "Unknown device '<name>'".
+        if (!gpio_mapping_get_pin(device_name, pin_out)) {
+            snprintf(result, result_len, "Unknown device '%s'", device_name);
+            return false;
+        }
+        return true;
+    }
+
+    // If it is neither a number nor a string, return the updated error message
+    snprintf(result, result_len, "pin must be a GPIO number or mapped device name");
+    return false;
+}
+
+
+/* ============================================================
  * HANDLER: tools_gpio_write_handler()
  *
  * Tool: gpio_write
@@ -112,9 +164,9 @@ bool tools_gpio_write_handler(const cJSON *input, char *result, size_t result_le
     // Extract the "state" field from the JSON object
     cJSON *state_json = cJSON_GetObjectItem(input, "state");
 
-    // Validate that "pin" exists and is a JSON number
-    if (!pin_json || !cJSON_IsNumber(pin_json)) {
-        snprintf(result, result_len, "Error: 'pin' required (number)");
+    int pin;
+    // Resolve the "pin" argument to a physical GPIO number (either numeric pin or device name)
+    if (!resolve_pin_argument(pin_json, &pin, result, result_len)) {
         return false;  // Return early – nothing else can proceed without a valid pin
     }
 
@@ -124,7 +176,6 @@ bool tools_gpio_write_handler(const cJSON *input, char *result, size_t result_le
         return false;
     }
 
-    int pin   = pin_json->valueint;    // The GPIO pin number (e.g. 4)
     int state = state_json->valueint;  // Desired level: 0 = LOW, anything else = HIGH
 
     // Check the pin against the board's allow-list (defined in config/policy).
@@ -163,13 +214,11 @@ bool tools_gpio_read_handler(const cJSON *input, char *result, size_t result_len
     // Extract the "pin" field from the JSON object
     cJSON *pin_json = cJSON_GetObjectItem(input, "pin");
 
-    // Validate that "pin" exists and is a number
-    if (!pin_json || !cJSON_IsNumber(pin_json)) {
-        snprintf(result, result_len, "Error: 'pin' required (number)");
+    int pin;
+    // Resolve the "pin" argument to a physical GPIO number (either numeric pin or device name)
+    if (!resolve_pin_argument(pin_json, &pin, result, result_len)) {
         return false;
     }
-
-    int pin = pin_json->valueint;  // The GPIO pin number to read
 
     // Ensure the pin is on the board's allow-list
     if (!tools_validate_allowed_gpio_pin(pin, NULL, result, result_len)) {
