@@ -29,6 +29,7 @@
 #include <stdio.h>            // snprintf()
 #include <stdlib.h>           // strtol() – string-to-long for parsing CSV pin numbers
 #include <string.h>           // String utilities (included for general use)
+#include "gpio_mapping.h"
 
 /* --- Constants --------------------------------------------- */
 
