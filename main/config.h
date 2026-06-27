@@ -1,3 +1,21 @@
+/* ============================================================
+ * config.h
+ *
+ * Central configuration header for "zclaw" — an AI agent
+ * firmware that runs on an ESP32 microcontroller under FreeRTOS.
+ *
+ * This file is the single source of truth for every tunable
+ * constant in the system: memory sizes, task priorities, API
+ * endpoints, GPIO safety limits, NVS keys, Telegram settings,
+ * scheduling, rate-limiting, and more.
+ *
+ * Nothing in here is executable code — it is purely #define
+ * constants, a single enum, and a few compile-time safety checks.
+ * Every other .c/.h file in the project #includes this header.
+ * ============================================================ */
+
+/* Standard include guard — prevents this file being processed
+ * more than once if multiple source files include it.          */
 #ifndef CONFIG_H
 #define CONFIG_H
 
@@ -198,4 +216,4 @@ typedef enum {
 #define RATELIMIT_MAX_PER_DAY       1000    // Max LLM requests per day
 #define RATELIMIT_ENABLED           1       // Set to 0 to disable
 
-#endif // CONFIG_H
+#endif // CONFIG_H  ← closes the #ifndef CONFIG_H include guard at the top
